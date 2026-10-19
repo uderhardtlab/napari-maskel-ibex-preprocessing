@@ -1,5 +1,8 @@
 # napari-maskel-ibex-preprocessing
 
+[![tests](https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing/actions/workflows/tests.yml/badge.svg)](https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing/actions/workflows/tests.yml)
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
+
 napari plugin and batch runner for light-sheet data of mouse peritoneum. It does three things:
 
 - finds the **outer surface of the muscle layer** from the TOM20 channel;
@@ -78,3 +81,14 @@ maskel-ibex-batch D:\data\round1 --dist-threshold -4 --dist-unit um
 | 3 | 26-connected components of the whole CD34 mask; keep those ≥ the minimum volume, then `d >` cutoff | 500 µm³; −4 µm |
 
 The defaults were validated on `LSM 2026-07-20_B6-12w-naive_co1-s1-r1` (naive, round 1).
+
+## Development and releases
+
+- **Every push and pull request:** `.github/workflows/tests.yml` runs the tests on Windows, Linux and macOS with Python 3.9–3.12. It also builds the package and checks it with `twine check`.
+- **Release:** set the new `version` in `pyproject.toml` and in `src/napari_maskel_ibex_preprocessing/__init__.py`, commit, then push a tag with the same version:
+  ```
+  git tag v0.1.0
+  git push origin v0.1.0
+  ```
+  `.github/workflows/release.yml` builds the package, checks that the tag matches the version, and publishes to PyPI through trusted publishing.
+- **One-time setup on pypi.org:** under *Publishing → Add a new pending publisher*, enter owner `uderhardtlab`, repository `napari-maskel-ibex-preprocessing`, workflow `release.yml`, environment `pypi`.
