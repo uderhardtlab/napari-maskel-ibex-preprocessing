@@ -12,8 +12,15 @@ authors = [{ name = "Anna Moeller" }]
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Framework :: napari",
+    "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
@@ -32,6 +39,8 @@ dependencies = [
 [project.urls]
 "Source Code" = "https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing"
 "Bug Tracker" = "https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing/issues"
+"Documentation" = "https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing#readme"
+"User Support" = "https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing/issues"
 
 [project.optional-dependencies]
 napari = ["napari[all]>=0.4.19"]

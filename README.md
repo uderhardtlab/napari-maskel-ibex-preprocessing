@@ -1,7 +1,13 @@
 # napari-maskel-ibex-preprocessing
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/uderhardtlab/napari-maskel-ibex-preprocessing/main/src/napari_maskel_ibex_preprocessing/resources/logo_preprocessing.png" alt="MaSkel IBEX preprocessing logo" width="400">
+</p>
+
+[![PyPI](https://img.shields.io/pypi/v/napari-maskel-ibex-preprocessing.svg)](https://pypi.org/project/napari-maskel-ibex-preprocessing)
+[![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-maskel-ibex-preprocessing)](https://napari-hub.org/plugins/napari-maskel-ibex-preprocessing)
 [![tests](https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing/actions/workflows/tests.yml/badge.svg)](https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing/actions/workflows/tests.yml)
-[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
+[![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing/blob/main/LICENSE)
 
 napari plugin and batch runner for light-sheet data of mouse peritoneum. It does three things:
 
@@ -13,13 +19,20 @@ The algorithms are in `napari_maskel_ibex_preprocessing.core` and use only numpy
 
 ## Installation
 
-Into an existing napari environment (Python ≥ 3.9):
+Into an existing napari environment (Python ≥ 3.9), either in napari via *Plugins > Install/Uninstall Plugins*, or:
 
 ```
-pip install -e path\to\napari-maskel-ibex-preprocessing
+pip install napari-maskel-ibex-preprocessing
 ```
 
-Use `pip install -e ".[napari]"` to install napari as well, and `".[testing]"` plus `pytest tests` to run the tests.
+Use `pip install "napari-maskel-ibex-preprocessing[napari]"` to install napari as well.
+
+For development, from a clone of this repository:
+
+```
+pip install -e ".[testing]"
+pytest tests
+```
 
 ## Input
 
@@ -91,4 +104,3 @@ The defaults were validated on `LSM 2026-07-20_B6-12w-naive_co1-s1-r1` (naive, r
   git push origin v0.1.0
   ```
   `.github/workflows/release.yml` builds the package, checks that the tag matches the version, and publishes to PyPI through trusted publishing.
-- **One-time setup on pypi.org:** under *Publishing → Add a new pending publisher*, enter owner `uderhardtlab`, repository `napari-maskel-ibex-preprocessing`, workflow `release.yml`, environment `pypi`.
