@@ -8,8 +8,9 @@ Export needs the full-volume results (the TIFFs have the original image shape).
 from pathlib import Path
 import numpy as np
 import dask.array as da
-from qtpy.QtCore import QObject, Signal
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QScrollArea
+from qtpy.QtCore import QObject, Signal, Qt
+from qtpy.QtGui import QPixmap
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel
 from magicgui.widgets import (Container, ComboBox, FloatSpinBox, SpinBox, CheckBox, PushButton,
                               Label, FileEdit)
 from napari.layers import Image, Shapes
@@ -23,6 +24,13 @@ from .core.cd34 import compute_cd34, h_for_region
 from .core.submeso import compute_submeso
 
 NONE = "(none)"
+LOGO = Path(__file__).parent / "resources" / "logo_preprocessing.png"
+LOGO_WIDTH = 380                     # px; large enough that "IBEX preprocessing" is readable
+GREEN, DARK_GREEN = "#648218", "#32410c"   # magnifying glass / text colour of the logo
+RUN_STYLE = (f"QPushButton {{ background-color: {GREEN}; color: white; font-weight: bold; "
+             f"border-radius: 4px; padding: 5px; }}"
+             f"QPushButton:hover {{ background-color: #74961c; }}"
+             f"QPushButton:disabled {{ background-color: {DARK_GREEN}; color: #9aa58a; }}")
 
 
 class _Messenger(QObject):
@@ -62,8 +70,8 @@ class PreprocessingWidget(QWidget):
         self.w_aauto = CheckBox(label="measure fibre direction automatically", value=True)
         self.w_angle = _fspin("fibre direction (°, x right, y down)", 0.0, -90, 90, 0.5)
         self.w_close = _fspin("surface closing radius (µm)", p["close_radius_um"], 0, 100, 0.1)
-        self.b1r = PushButton(text="1  Muscle surface: run on region")
-        self.b1f = PushButton(text="1  Muscle surface: run on full volume")
+        self.b1r = PushButton(text="1: Muscle surface – run on region")
+        self.b1f = PushButton(text="1: Muscle surface – run on full volume")
         # ---- step 2
         self.w_tis = _fspin("tissue smoothing σ (µm)", p["tissue_smooth_um"], 0, 50)
         self.w_cz = _fspin("CD34 smoothing σ z (µm)", p["cd34_smooth_um"][0], 0, 20)
@@ -75,16 +83,18 @@ class PreprocessingWidget(QWidget):
         self.w_blk = _fspin("noise block size (µm)", p["hyst_block_um"], 10, 5000, 10)
         self.w_blo = _fspin("noise band from d = (µm)", p["hyst_noise_band_um"][0], -200, 200, 1)
         self.w_bhi = _fspin("noise band to d = (µm)", p["hyst_noise_band_um"][1], -200, 200, 1)
-        self.b2r = PushButton(text="2  CD34 mask: run on region")
-        self.b2f = PushButton(text="2  CD34 mask: run on full volume")
+        self.b2r = PushButton(text="2: CD34 mask – run on region")
+        self.b2f = PushButton(text="2: CD34 mask – run on full volume")
         # ---- step 3
         self.w_cut = _fspin("distance cutoff: keep d > (µm)", p["cutoff_um"], -200, 200, 1)
         self.w_comp = _fspin("min. CD34 component (µm³)", p["min_component_um3"], 0, 1e8, 50)
-        self.b3r = PushButton(text="3  Distance filter: run on region")
-        self.b3f = PushButton(text="3  Distance filter: run on full volume")
+        self.b3r = PushButton(text="3: Distance filter – run on region")
+        self.b3f = PushButton(text="3: Distance filter – run on full volume")
         # ---- export
         self.w_dir = FileEdit(label="output folder", mode="d")
-        self.w_dthr = _fspin("distance TIFF: 1 where d >", 0.0, -500, 500, 0.5)
+        self.w_dthr = _fspin("distance TIFF: 1 where d >", p["cutoff_um"], -500, 500, 0.5,
+                             "Defaults to the distance cutoff of step 3 and follows it, until "
+                             "you set a different value here.")
         self.w_dunit = ComboBox(label="unit of this threshold", choices=["µm", "z slices"])
         self.w_comp_tif = CheckBox(label="ZIP-compress TIFFs", value=True)
         self.b4d = PushButton(text="Export distance mask TIFF (full volume)")
@@ -97,15 +107,26 @@ class PreprocessingWidget(QWidget):
 
         self.container = Container(widgets=[
             head("Data"), self.w_muscle, self.w_cd34, self.w_region,
-            head("1  Muscle surface (TOM20)"), self.w_ds, self.w_tz, self.w_ty, self.w_tx,
+            head("1: Muscle surface (TOM20)"), self.w_ds, self.w_tz, self.w_ty, self.w_tx,
             self.w_mauto, self.w_mthr, self.w_mvol, self.w_line, self.w_aauto, self.w_angle,
             self.w_close, self.b1r, self.b1f,
-            head("2  CD34 mask"), self.w_tis, self.w_cz, self.w_cy, self.w_cx, self.w_bg,
+            head("2: CD34 mask"), self.w_tis, self.w_cz, self.w_cy, self.w_cx, self.w_bg,
             self.w_cvol, self.w_k, self.w_blk, self.w_blo, self.w_bhi, self.b2r, self.b2f,
-            head("3  Distance filter"), self.w_cut, self.w_comp, self.b3r, self.b3f,
+            head("3: Distance filter"), self.w_cut, self.w_comp, self.b3r, self.b3f,
             head("Export"), self.w_dir, self.w_dthr, self.w_dunit, self.w_comp_tif,
             self.b4d, self.b4m, self.b4s,
             head("Status"), self.status])
+        # logo (transparent background, light text: readable on napari's dark theme as it is)
+        logo = QLabel()
+        pix = QPixmap(str(LOGO))
+        if not pix.isNull():
+            logo.setPixmap(pix.scaledToWidth(LOGO_WIDTH, Qt.SmoothTransformation))
+        logo.setAlignment(Qt.AlignCenter)
+        self.container.native.layout().insertWidget(0, logo)
+        # run buttons: green of the magnifying glass; disabled (while a step runs): dark green
+        # of the logo text
+        for b in (self.b1r, self.b1f, self.b2r, self.b2f, self.b3r, self.b3f):
+            b.native.setStyleSheet(RUN_STYLE)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.container.native)
@@ -124,6 +145,8 @@ class PreprocessingWidget(QWidget):
         self.b4m.changed.connect(self._export_mask)
         self.b4s.changed.connect(self._save_steps)
         self.w_muscle.changed.connect(self._default_folder)
+        self._last_cut = self.w_cut.value
+        self.w_cut.changed.connect(self._follow_cutoff)
         for ev in (self.viewer.layers.events.inserted, self.viewer.layers.events.removed):
             ev.connect(self._refresh)
         self._refresh()
@@ -155,6 +178,13 @@ class PreprocessingWidget(QWidget):
                     if md.get("maskel_source") == src and md.get("maskel_channel") == idx:
                         w.value = n
         self._default_folder()
+
+    def _follow_cutoff(self, value):
+        """The distance-TIFF threshold follows the step-3 cutoff while it still equals the
+        previous cutoff (i.e. was not set separately) and is given in um."""
+        if self.w_dunit.value == "µm" and abs(self.w_dthr.value - self._last_cut) < 1e-9:
+            self.w_dthr.value = value
+        self._last_cut = value
 
     def _default_folder(self, *_):
         lay = self._layer(self.w_muscle.value)

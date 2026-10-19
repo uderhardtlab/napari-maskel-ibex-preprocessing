@@ -48,4 +48,4 @@ maskel-ibex-ims2h5 = "napari_maskel_ibex_preprocessing.core.ims:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"*" = ["napari.yaml"]
+"*" = ["napari.yaml", "resources/*.png"]
