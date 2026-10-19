@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "napari-maskel-ibex-preprocessing"
+version = "0.1.0"
+description = "napari plugin: muscle surface from TOM20, CD34 fibroblast mask, distance filtering and TIFF export for light-sheet peritoneum (IBEX) data"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Anna Moeller" }]
+license = { text = "BSD-3-Clause" }
+classifiers = [
+    "Framework :: napari",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "numpy>=1.22",
+    "scipy>=1.8",
+    "scikit-image>=0.20",
+    "h5py>=3.6",
+    "tifffile>=2022.8",
+    "dask[array]>=2022.1",
+    "matplotlib>=3.5",
+    "magicgui>=0.7",
+    "qtpy",
+]
+
+[project.urls]
+"Source Code" = "https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing"
+"Bug Tracker" = "https://github.com/uderhardtlab/napari-maskel-ibex-preprocessing/issues"
+
+[project.optional-dependencies]
+napari = ["napari[all]>=0.4.19"]
+testing = ["pytest"]
+
+[project.entry-points."napari.manifest"]
+napari-maskel-ibex-preprocessing = "napari_maskel_ibex_preprocessing:napari.yaml"
+
+[project.scripts]
+maskel-ibex-batch = "napari_maskel_ibex_preprocessing.cli:main"
+maskel-ibex-ims2h5 = "napari_maskel_ibex_preprocessing.core.ims:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["napari.yaml"]

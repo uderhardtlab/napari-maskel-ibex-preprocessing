@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+
+# data and results (never commit image data)
+*.h5
+*.h5.part
+*.ims
+*.tif
+*.tiff
+*.npy
+*_preprocessing_log.txt

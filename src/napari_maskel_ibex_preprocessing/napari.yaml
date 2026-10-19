@@ -1,0 +1,17 @@
+name: napari-maskel-ibex-preprocessing
+display_name: MASKEL IBEX preprocessing
+contributions:
+  commands:
+    - id: napari-maskel-ibex-preprocessing.get_reader
+      python_name: napari_maskel_ibex_preprocessing._reader:get_reader
+      title: Open converted light-sheet .h5 (Channel_0, Channel_1, ...)
+    - id: napari-maskel-ibex-preprocessing.widget
+      python_name: napari_maskel_ibex_preprocessing._widget:PreprocessingWidget
+      title: Muscle surface and CD34 filtering
+  readers:
+    - command: napari-maskel-ibex-preprocessing.get_reader
+      filename_patterns: ["*.h5"]
+      accepts_directories: false
+  widgets:
+    - command: napari-maskel-ibex-preprocessing.widget
+      display_name: Muscle surface and CD34 filtering
