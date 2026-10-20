@@ -8,7 +8,9 @@ default parameters (core/params.py) - the same functions as the napari widget.
   4  TIFFs (ZIP-compressed, original image shape)  -> <stem>_tif/
        <stem>_fibroblast_mask.tif   final mask
        <stem>_distance_gt<T>.tif    1 where d > T (T from --dist-threshold, default 0 um)
-  5  orientation check: TOM20 (muscle) peak must lie at LOWER z than the CD34 peak
+  5  Cx43-positive volume within 2 um of the fibroblast mask (adaptive threshold T = 12)
+                                                   -> <stem>_cx43pos.h5, <stem>_cx43_objects.csv
+  6  orientation check: TOM20 (muscle) peak must lie at LOWER z than the CD34 peak
 A sample is skipped if its fibroblast mask TIFF already exists (--force recomputes). One failing
 sample does not stop the others; console output also goes to <stem>_preprocessing_log.txt.
 
@@ -26,6 +28,7 @@ from .core.ims import ims_to_h5
 from .core.muscle import measure_orientation, compute_surface
 from .core.cd34 import compute_cd34, h_for_region
 from .core.submeso import compute_submeso
+from .core.cx43 import compute_cx43, write_table
 from .core.filters import h_fullres
 
 OUTPUT_SUFFIXES = ("_layers.h5", "_cd34.h5", "_submeso_cd34.h5", "_cd34steps.h5",
@@ -56,18 +59,26 @@ def process(inp, opt, log):
         sp = src.sp
         # 1. muscle surface
         orient = measure_orientation(src, p["muscle_channel"], p, log)
-        surf = compute_surface(src, p["muscle_channel"], orient["theta0_deg"], p, log)
+        mac_ch = p["macrophage_channel"] if p["macrophage_exclusion"] else None
+        if mac_ch is not None and mac_ch >= src.n_channels:
+            raise ValueError(f"CD11b channel {mac_ch} not in the file")
+        surf = compute_surface(src, p["muscle_channel"], orient["theta0_deg"], p, log, mac_ch=mac_ch)
         ds = surf["ds"]
         with new_steps_file(h5.with_name(f"{stem}_layers.h5"), sp, dict(p, orientation=orient)) as out:
             for name, key, kind in (("1a_valid_ds", "valid_ds", "labels"),
                                     ("1c_tom20_smoothed_ds", "tom_smoothed", "image"),
                                     ("2a_muscle_thresholded_ds", "muscle_thresholded", "labels"),
                                     ("2b_muscle_size_filtered_ds", "muscle_size_filtered", "labels"),
-                                    ("2c_muscle_fibres_ds", "muscle", "labels"),
+                                    ("2c_muscle_fibres_ds", "muscle_fibres", "labels"),
+                                    ("2d_muscle_largest_component_ds", "muscle", "labels"),
+                                    ("2e_cd11b_smoothed_ds", "cd11b_smoothed", "image"),
+                                    ("2f_cd11b_positive_ds", "macrophages", "labels"),
                                     ("3a_h_raw_z", "h_raw", "image"),
+                                    ("3b_macrophage_columns", "macrophage_columns", "labels"),
                                     ("3c_h_filled_z", "h_filled", "image"),
                                     ("3d_h_clean_z", "h", "image")):
-                save_step(out, name, surf[key], kind, sp, ds=ds, log=lambda *_: None)
+                if key in surf:
+                    save_step(out, name, surf[key], kind, sp, ds=ds, log=lambda *_: None)
         # 2. CD34
         nz, ny, nx = src.shape
         h_full = h_for_region(surf, src.region)
@@ -97,7 +108,17 @@ def process(inp, opt, log):
         write_mask_tif(tifdir / f"{stem}_distance_gt{tag}.tif", dmask, sp, opt["compress"])
         write_mask_tif(final_tif, sub["final"], sp, opt["compress"])
         log(f"TIFFs written to {tifdir.name}")
-        # 5. orientation check
+        # 5. Cx43
+        final = sub["final"]
+        del sub, dmask, mask
+        cx = compute_cx43(src.volume(p["cx43_channel"]), final, sp, p, log=log)
+        with new_steps_file(h5.with_name(f"{stem}_cx43pos.h5"), sp, p) as out:
+            save_step(out, "1_cx43_contrast", cx["contrast"], "image", sp, contrast=[-10, 60],
+                      log=lambda *_: None)
+            save_step(out, "2_cx43_positive", cx["labels"], "labels", sp, log=lambda *_: None)
+        write_table(h5.with_name(f"{stem}_cx43_objects.csv"), cx["table"])
+        del cx
+        # 6. orientation check
         prof = {}
         for name, c in (("muscle", p["muscle_channel"]), ("cd34", p["cd34_channel"])):
             prof[name] = int(np.argmax([src.slice(c, z).mean() for z in range(nz)]))

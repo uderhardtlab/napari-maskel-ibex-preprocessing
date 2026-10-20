@@ -8,9 +8,7 @@ Export needs the full-volume results (the TIFFs have the original image shape).
 from pathlib import Path
 import numpy as np
 import dask.array as da
-from qtpy.QtCore import QObject, Signal, Qt
-from qtpy.QtGui import QPixmap
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QScrollArea, QLabel
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QScrollArea
 from magicgui.widgets import (Container, ComboBox, FloatSpinBox, SpinBox, CheckBox, PushButton,
                               Label, FileEdit)
 from napari.layers import Image, Shapes
@@ -22,20 +20,7 @@ from .core.io import VolumeSource, write_mask_tif, new_steps_file, save_step
 from .core.muscle import measure_orientation, compute_surface
 from .core.cd34 import compute_cd34, h_for_region
 from .core.submeso import compute_submeso
-
-NONE = "(none)"
-LOGO = Path(__file__).parent / "resources" / "logo_preprocessing.png"
-LOGO_WIDTH = 380                     # px; large enough that "IBEX preprocessing" is readable
-GREEN, DARK_GREEN = "#648218", "#32410c"   # magnifying glass / text colour of the logo
-RUN_STYLE = (f"QPushButton {{ background-color: {GREEN}; color: white; font-weight: bold; "
-             f"border-radius: 4px; padding: 5px; }}"
-             f"QPushButton:hover {{ background-color: #74961c; }}"
-             f"QPushButton:disabled {{ background-color: {DARK_GREEN}; color: #9aa58a; }}")
-
-
-class _Messenger(QObject):
-    """Carries status messages from the worker thread to the GUI thread (queued signal)."""
-    message = Signal(str)
+from ._qt_common import NONE, RUN_STYLE, Messenger, logo_label
 
 
 def _fspin(label, value, lo, hi, step=0.1, tip=""):
@@ -48,7 +33,7 @@ class PreprocessingWidget(QWidget):
         self.viewer = napari_viewer
         self.results = {"surface": {}, "cd34": {}, "final": {}}   # per scope: "region" / "full"
         self._busy = False
-        self._msg = _Messenger()
+        self._msg = Messenger()
         self._msg.message.connect(self._status)
         p = defaults()
 
@@ -70,6 +55,17 @@ class PreprocessingWidget(QWidget):
         self.w_aauto = CheckBox(label="measure fibre direction automatically", value=True)
         self.w_angle = _fspin("fibre direction (°, x right, y down)", 0.0, -90, 90, 0.5)
         self.w_close = _fspin("surface closing radius (µm)", p["close_radius_um"], 0, 100, 0.1)
+        self.w_largest = CheckBox(label="keep only the largest muscle component",
+                                  value=p["muscle_largest_component"],
+                                  tooltip="removes objects lying on the tissue, e.g. a hair")
+        self.w_mac = CheckBox(label="macrophage columns (CD11b): h from neighbours",
+                              value=p["macrophage_exclusion"],
+                              tooltip="columns whose top muscle voxels are CD11b+ take h from "
+                                      "the neighbouring columns (macrophage clusters on the "
+                                      "muscle are bright in TOM20 too)")
+        self.w_macch = ComboBox(label="CD11b channel", choices=self._image_names)
+        self.w_macauto = CheckBox(label="CD11b threshold automatic (Otsu)", value=True)
+        self.w_macthr = _fspin("CD11b threshold (if not automatic)", 30.0, 0, 255, 0.5)
         self.b1r = PushButton(text="1: Muscle surface – run on region")
         self.b1f = PushButton(text="1: Muscle surface – run on full volume")
         # ---- step 2
@@ -109,7 +105,8 @@ class PreprocessingWidget(QWidget):
             head("Data"), self.w_muscle, self.w_cd34, self.w_region,
             head("1: Muscle surface (TOM20)"), self.w_ds, self.w_tz, self.w_ty, self.w_tx,
             self.w_mauto, self.w_mthr, self.w_mvol, self.w_line, self.w_aauto, self.w_angle,
-            self.w_close, self.b1r, self.b1f,
+            self.w_close, self.w_largest, self.w_mac, self.w_macch, self.w_macauto,
+            self.w_macthr, self.b1r, self.b1f,
             head("2: CD34 mask"), self.w_tis, self.w_cz, self.w_cy, self.w_cx, self.w_bg,
             self.w_cvol, self.w_k, self.w_blk, self.w_blo, self.w_bhi, self.b2r, self.b2f,
             head("3: Distance filter"), self.w_cut, self.w_comp, self.b3r, self.b3f,
@@ -117,12 +114,7 @@ class PreprocessingWidget(QWidget):
             self.b4d, self.b4m, self.b4s,
             head("Status"), self.status])
         # logo (transparent background, light text: readable on napari's dark theme as it is)
-        logo = QLabel()
-        pix = QPixmap(str(LOGO))
-        if not pix.isNull():
-            logo.setPixmap(pix.scaledToWidth(LOGO_WIDTH, Qt.SmoothTransformation))
-        logo.setAlignment(Qt.AlignCenter)
-        self.container.native.layout().insertWidget(0, logo)
+        self.container.native.layout().insertWidget(0, logo_label())
         # run buttons: green of the magnifying glass; disabled (while a step runs): dark green
         # of the logo text
         for b in (self.b1r, self.b1f, self.b2r, self.b2f, self.b3r, self.b3f):
@@ -160,7 +152,7 @@ class PreprocessingWidget(QWidget):
         return [NONE] + [l.name for l in self.viewer.layers if isinstance(l, Shapes)]
 
     def _refresh(self, *_):
-        for w in (self.w_muscle, self.w_cd34, self.w_region):
+        for w in (self.w_muscle, self.w_cd34, self.w_macch, self.w_region):
             w.reset_choices()
         # defaults when a NEW sample appears (reader metadata): muscle = channel of
         # DEFAULTS["muscle_channel"], CD34 = DEFAULTS["cd34_channel"]; later user choices stay
@@ -172,7 +164,8 @@ class PreprocessingWidget(QWidget):
         if new:
             self._seen_sources = getattr(self, "_seen_sources", set()) | new
             src = sorted(new)[-1]
-            for w, idx in ((self.w_muscle, p["muscle_channel"]), (self.w_cd34, p["cd34_channel"])):
+            for w, idx in ((self.w_muscle, p["muscle_channel"]), (self.w_cd34, p["cd34_channel"]),
+                           (self.w_macch, p["macrophage_channel"])):
                 for n in self._image_names():
                     md = self.viewer.layers[n].metadata if n != NONE else {}
                     if md.get("maskel_source") == src and md.get("maskel_channel") == idx:
@@ -206,6 +199,9 @@ class PreprocessingWidget(QWidget):
                  muscle_min_volume_um3=self.w_mvol.value, fibre_line_um=self.w_line.value,
                  fibre_theta_deg=None if self.w_aauto.value else self.w_angle.value,
                  close_radius_um=self.w_close.value, tissue_smooth_um=self.w_tis.value,
+                 muscle_largest_component=self.w_largest.value,
+                 macrophage_exclusion=self.w_mac.value,
+                 macrophage_threshold=None if self.w_macauto.value else self.w_macthr.value,
                  cd34_smooth_um=[self.w_cz.value, self.w_cy.value, self.w_cx.value],
                  bg_sigma_um=self.w_bg.value, cd34_min_volume_um3=self.w_cvol.value,
                  hyst_k_sd=self.w_k.value, hyst_block_um=self.w_blk.value,
@@ -290,6 +286,14 @@ class PreprocessingWidget(QWidget):
             return
         p = self._params()
         ch = lays.index(m)
+        mac_ch = None
+        if p["macrophage_exclusion"]:
+            macl = self._layer(self.w_macch.value)
+            if macl is None or macl not in lays:
+                show_error("choose the CD11b channel (same sample as the muscle channel), or "
+                           "switch the macrophage columns off")
+                return
+            mac_ch = lays.index(macl)
 
         def fn(log):
             log(f"step 1 on {scope} {src.region} ...")
@@ -298,7 +302,7 @@ class PreprocessingWidget(QWidget):
             if theta is None:
                 orient = measure_orientation(src, ch, p, log)
                 theta = orient["theta0_deg"]
-            res = compute_surface(src, ch, theta, p, log)
+            res = compute_surface(src, ch, theta, p, log, mac_ch=mac_ch)
             res.update(orientation=orient, full_shape=src.full_shape, sp=src.sp)
             return res
 
@@ -321,11 +325,21 @@ class PreprocessingWidget(QWidget):
                        sc, tr, colormap="cyan", blending="additive", contrast_limits=[0, 1])
             self._show(f"height map h (z slice) {tag}", res["h"], "image", sc[1:], tr[1:],
                        colormap="viridis", visible=False)
+            if "macrophage_columns" in res:
+                self._show(f"CD11b+ {tag}", res["macrophages"].astype(np.uint8), "labels", sc, tr,
+                           opacity=0.5, visible=False)
+                self._show(f"macrophage columns {tag}", res["macrophage_columns"].astype(np.uint8),
+                           "labels", sc[1:], tr[1:], opacity=0.4, visible=False)
             self._show(f"signed distance d (µm) {tag}", self._lazy_distance(res), "image",
                        sp, (0.0, y0 * sp[1], x0 * sp[2]), colormap="PiYG",
                        contrast_limits=[-20, 20], visible=False)
             self._status(f"step 1 done ({scope}): fibre direction {res['theta0_deg']:.1f}°, "
-                         f"muscle threshold {res['threshold']:.2f}")
+                         f"muscle threshold {res['threshold']:.2f}"
+                         + (f"; CD11b threshold {res['macrophage_threshold']:.2f}, macrophage "
+                            + ("columns SKIPPED (> 20 % of the columns; set the CD11b threshold "
+                               "by hand)" if res["macrophage_skipped"] else
+                               f"columns {res['macrophage_columns'].mean():.2%}")
+                            if "macrophage_columns" in res else ""))
 
         self._run(fn, done)
 
@@ -504,6 +518,9 @@ class PreprocessingWidget(QWidget):
                         org = s["region"][0::2]
                         save_step(o, "1a_tom20_smoothed_ds", s["tom_smoothed"], "image", ds=ds, origin_yx=org, **q)
                         save_step(o, "1b_muscle_ds", s["muscle"], "labels", ds=ds, origin_yx=org, **q)
+                        if "macrophage_columns" in s:
+                            save_step(o, "1b2_cd11b_positive_ds", s["macrophages"], "labels", ds=ds, origin_yx=org, **q)
+                            save_step(o, "1b3_macrophage_columns", s["macrophage_columns"], "labels", ds=ds, origin_yx=org, **q)
                         save_step(o, "1c_h_z", s["h"], "image", ds=ds, origin_yx=org, **q)
                     if c is not None:
                         org = c["region"][0::2]

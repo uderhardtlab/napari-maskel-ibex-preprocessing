@@ -8,6 +8,9 @@ contributions:
     - id: napari-maskel-ibex-preprocessing.widget
       python_name: napari_maskel_ibex_preprocessing._widget:PreprocessingWidget
       title: Muscle surface and CD34 filtering
+    - id: napari-maskel-ibex-preprocessing.cx43_widget
+      python_name: napari_maskel_ibex_preprocessing._cx43_widget:Cx43Widget
+      title: Cx43 puncta near the fibroblast mask
   readers:
     - command: napari-maskel-ibex-preprocessing.get_reader
       filename_patterns: ["*.h5"]
@@ -15,3 +18,5 @@ contributions:
   widgets:
     - command: napari-maskel-ibex-preprocessing.widget
       display_name: Muscle surface and CD34 filtering
+    - command: napari-maskel-ibex-preprocessing.cx43_widget
+      display_name: Cx43 puncta

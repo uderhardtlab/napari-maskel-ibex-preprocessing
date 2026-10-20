@@ -57,6 +57,66 @@ def test_pipeline(tmp_path):
     assert path.exists()
 
 
+def test_macrophages_and_hair():
+    """A macrophage cluster on the muscle (bright in TOM20 and CD11b, 4 slices high) and a hair
+    lying 3 slices above the muscle (bright in TOM20 only, long and thin along the fibres)
+    must not lift the surface: h stays at the top muscle slice."""
+    p = defaults()
+    chans = synthetic()
+    tom, cd11b = chans[0].astype(np.float32), chans[4].astype(np.float32)
+    yy, xx = np.mgrid[0:NY, 0:NX]
+    blob = (yy - 300) ** 2 + (xx - 300) ** 2 < 60 ** 2           # ~28 um radius
+    for z in range(SURF_Z + 1, SURF_Z + 5):
+        tom[z][blob] = 80
+        cd11b[z][blob] = 120
+    th = np.radians(30.0)
+    along = xx * np.cos(th) + yy * np.sin(th)
+    across = -xx * np.sin(th) + yy * np.cos(th)
+    hair = (np.abs(across + 150) < 8) & (np.abs(along - 450) < 150)   # far from the blob
+    for z in range(SURF_Z + 4, SURF_Z + 7):
+        tom[z][hair] = 80
+    chans[0], chans[4] = (np.clip(a, 0, 255).astype(np.uint8) for a in (tom, cd11b))
+    # the synthetic CD11b has a uniform tissue background and no macrophages: the rule must
+    # skip itself instead of marking every column
+    s0 = compute_surface(VolumeSource(synthetic(), SP), 0, 30.0, p, log=lambda *_: None, mac_ch=4)
+    assert s0["macrophage_skipped"] and abs(np.median(s0["h"]) - SURF_Z) <= 1
+    # real CD11b: dim background, bright cells
+    rng = np.random.default_rng(2)
+    cd11b = rng.normal(3, 1, cd11b.shape).astype(np.float32)
+    for z in range(SURF_Z + 1, SURF_Z + 5):
+        cd11b[z][blob] = 120
+    chans[4] = np.clip(cd11b, 0, 255).astype(np.uint8)
+    src = VolumeSource(chans, SP)
+    surf = compute_surface(src, 0, 30.0, p, log=lambda *_: None, mac_ch=4)
+    h = h_for_region(surf, src.region)
+    assert abs(np.median(h[blob]) - SURF_Z) <= 1, np.median(h[blob])
+    assert np.percentile(h[hair], 95) <= SURF_Z + 1, np.percentile(h[hair], 95)
+    # without the two rules both lift the surface
+    p.update(muscle_largest_component=False)
+    h0 = h_for_region(compute_surface(src, 0, 30.0, p, log=lambda *_: None), src.region)
+    assert np.median(h0[blob]) >= SURF_Z + 3 and np.median(h0[hair]) >= SURF_Z + 4
+
+
+def test_cx43():
+    """Bright 3 x 3 px puncta: one row on top of a fibroblast sheet, one row 10 slices (20 um)
+    above it. Only the puncta within cx43_max_dist_um (2 um) of the mask are positive."""
+    from napari_maskel_ibex_preprocessing.core.cx43 import compute_cx43
+    p = defaults()
+    rng = np.random.default_rng(1)
+    nz, ny, nx = 24, 256, 256
+    raw = rng.normal(10, 2, (nz, ny, nx)).astype(np.float32)
+    mask = np.zeros((nz, ny, nx), bool)
+    mask[10, :, :] = True                                 # fibroblast sheet in slice 10
+    for k, x in enumerate(range(30, 230, 40)):
+        raw[10, 100:103, x:x + 3] += 60                   # on the sheet  -> positive
+        raw[20, 160:163, x:x + 3] += 60                   # 20 um above   -> excluded
+    res = compute_cx43(raw, mask, SP, p, log=lambda *_: None)
+    assert res["n_objects"] == 5, res["n_objects"]
+    t = res["table"]
+    assert np.all(np.abs(t[:, 1] - 10 * SP[0]) < 1e-6)    # all at z = slice 10
+    assert np.all(t[:, 9] == 1.0)                         # fully inside the mask
+
+
 def test_region_alignment():
     src = VolumeSource(synthetic(), SP, region=(101, 400, 203, 500))
     assert src.region[0] % 4 == 0 and src.region[2] % 4 == 0
