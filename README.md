@@ -53,7 +53,7 @@ Assumed geometry:
 3. Choose the **muscle channel** (TOM20) and the **CD34 channel**. For files from the reader, Channel_0 and Channel_3 are pre-selected.
 4. For fast tuning, draw a **rectangle** in a Shapes layer (2D view) and choose that layer as the *region*. Every step has *Run on region* (seconds to a minute) and *Run on full volume* (minutes). Both run in the background.
    - **1 Muscle surface:** muscle mask, surface, height map `h` and the **signed distance map** `d = (z − h)·dz` (µm; > 0 = mesothelium side).
-     Two options guard the surface: *keep only the largest muscle component* (removes e.g. a hair lying on the tissue) and *macrophage columns (CD11b)*. A macrophage cluster on the muscle is bright in TOM20 too and would lift `h`; in columns whose top muscle voxels are CD11b⁺, `h` is taken from the neighbouring columns instead.
+     Two options guard the surface: *remove muscle components smaller than 1 % of the largest* (removes e.g. a hair lying on the tissue, but keeps large separate pieces of real muscle) and *macrophage columns (CD11b)*. A macrophage cluster on the muscle is bright in TOM20 too and would lift `h`; in columns whose top muscle voxels are CD11b⁺, `h` is taken from the neighbouring columns instead.
    - **2 CD34 mask:** CD34 mask, thresholded by hysteresis with a local, noise-based low threshold.
    - **3 Distance filter:** keeps CD34 components ≥ the minimum volume, then the part with `d >` cutoff → **fibroblast mask**.
 5. **Export** (needs the full-volume results; TIFFs in the original image shape, uint8 0/255, voxel size in the metadata, optional ZIP compression):
@@ -105,7 +105,7 @@ maskel-ibex-batch D:\data\round1 --dist-threshold -4 --dist-unit um
 | 1 | normalized Gaussian | σ (2, 5, 5) µm |
 | 1 | muscle = above the lowest 3-class multi-Otsu threshold; small objects removed | < 5000 µm³ |
 | 1 | fibre filter: binary opening with a line along the measured fibre direction (structure tensor) | 30 µm |
-| 1 | only the largest 26-connected muscle component is kept (removes objects lying on the tissue, e.g. a hair) | on |
+| 1 | 26-connected muscle components smaller than a fraction of the largest are removed (objects lying on the tissue, e.g. a hair) | 1 % |
 | 1 | macrophage columns (CD11b, Channel_4): CD11b⁺ (Otsu of the smoothed CD11b, σ (1, 2, 2) µm) muscle within the top 2 slices of a column → column dilated by 10 µm, its `h` taken from the neighbouring columns; skipped if > 20 % of the columns | on |
 | 1 | `h` = highest muscle z; empty and macrophage columns from the nearest column; grey closing | disk 9.2 µm |
 | 2 | tissue = Otsu on log of the summed channels (2 × 2 blocks) | smoothing 5 µm |
@@ -125,7 +125,7 @@ The defaults were validated on `LSM 2026-07-20_B6-12w-naive_co1-s1-r1` (naive, r
 - **Every push and pull request:** `.github/workflows/tests.yml` runs the tests on Windows, Linux and macOS with Python 3.9–3.12. It also builds the package and checks it with `twine check`.
 - **Release:** set the new `version` in `pyproject.toml` and in `src/napari_maskel_ibex_preprocessing/__init__.py`, commit, then push a tag with the same version:
   ```
-  git tag v0.2.0
-  git push origin v0.2.0
+  git tag v0.2.1
+  git push origin v0.2.1
   ```
   `.github/workflows/release.yml` builds the package, checks that the tag matches the version, and publishes to PyPI through trusted publishing.

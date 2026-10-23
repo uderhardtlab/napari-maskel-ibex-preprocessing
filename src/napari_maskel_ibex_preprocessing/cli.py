@@ -70,7 +70,7 @@ def process(inp, opt, log):
                                     ("2a_muscle_thresholded_ds", "muscle_thresholded", "labels"),
                                     ("2b_muscle_size_filtered_ds", "muscle_size_filtered", "labels"),
                                     ("2c_muscle_fibres_ds", "muscle_fibres", "labels"),
-                                    ("2d_muscle_largest_component_ds", "muscle", "labels"),
+                                    ("2d_muscle_large_components_ds", "muscle", "labels"),
                                     ("2e_cd11b_smoothed_ds", "cd11b_smoothed", "image"),
                                     ("2f_cd11b_positive_ds", "macrophages", "labels"),
                                     ("3a_h_raw_z", "h_raw", "image"),

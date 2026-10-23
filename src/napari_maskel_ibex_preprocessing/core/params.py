@@ -18,8 +18,8 @@ DEFAULTS = dict(
     fibre_line_um=30.0,               # fibre filter: line length along the fibre direction
     fibre_theta_deg=None,             # None = measure; else fibre direction (x right, y down)
     close_radius_um=9.2,              # grey closing of h: fills gaps between fibres <= ~18 um
-    muscle_largest_component=True,    # keep only the largest 26-connected muscle component
-                                      # (removes objects on the tissue, e.g. a hair)
+    muscle_min_component_fraction=0.01,  # muscle components < this x the largest are removed
+                                      # (objects on the tissue, e.g. a hair; 0 = keep all)
     macrophage_exclusion=True,        # columns with CD11b+ muscle at the top: h from neighbours
     macrophage_channel=4,             # CD11b
     macrophage_sigma_um=[1.0, 2.0, 2.0],  # CD11b smoothing (Z, Y, X) on the block grid

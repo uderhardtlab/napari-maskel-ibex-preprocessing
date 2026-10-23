@@ -92,9 +92,22 @@ def test_macrophages_and_hair():
     assert abs(np.median(h[blob]) - SURF_Z) <= 1, np.median(h[blob])
     assert np.percentile(h[hair], 95) <= SURF_Z + 1, np.percentile(h[hair], 95)
     # without the two rules both lift the surface
-    p.update(muscle_largest_component=False)
+    p.update(muscle_min_component_fraction=0.0)
     h0 = h_for_region(compute_surface(src, 0, 30.0, p, log=lambda *_: None), src.region)
     assert np.median(h0[blob]) >= SURF_Z + 3 and np.median(h0[hair]) >= SURF_Z + 4
+
+
+def test_large_components():
+    """Components < 1 % of the largest are removed, larger separate pieces are kept."""
+    from napari_maskel_ibex_preprocessing.core.muscle import keep_large_components
+    m = np.zeros((10, 100, 100), bool)
+    m[:, :50, :] = True                                  # largest: 50000 voxels
+    m[:5, 60:80, :10] = True                             # 1000 voxels = 2 %   -> kept
+    m[0, 90:95, 90:95] = True                            # 25 voxels = 0.05 %  -> removed
+    k = keep_large_components(m, 0.01)
+    assert k[:, :50].all() and k[:5, 60:80, :10].all() and not k[0, 90:95, 90:95].any()
+    assert keep_large_components(m, 0.0).sum() == m.sum()
+    assert keep_large_components(m, 1.0).sum() == 50000
 
 
 def test_cx43():

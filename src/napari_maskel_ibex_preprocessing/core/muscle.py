@@ -8,9 +8,12 @@ in the field of view. Everything on a ds x ds XY block grid (ds = 4: 1.845 um fo
              26-connected objects < 5000 um^3 removed; fibre filter = binary opening with a
              30 um line along the fibre direction (outside the valid image counts as muscle for
              the erosion) - removes round artefacts even when they touch a fibre
-  largest  = only the largest 26-connected muscle component is kept (muscle is one continuous
-             layer; removes objects lying on the tissue, e.g. a hair: bright, long and thin, so
-             it passes the fibre filter)
+  components = 26-connected muscle components smaller than 1 % of the largest are removed
+             (removes objects lying on the tissue, e.g. a hair: bright, long and thin, so it
+             passes the fibre filter; 0.014 % of the largest). Large separate pieces of real
+             muscle are kept (round 1: 6.9 and 7.5 % in one sample; all small objects in 13
+             samples <= 0.053 %). Keeping ONLY the largest component removed such a piece and
+             lowered h there by up to 22 um.
   h_raw    = highest muscle z per column
   macrophage columns (optional, CD11b channel): a cluster of macrophages on the muscle is bright
              in TOM20 too and lifts h. CD11b block means, normalized Gaussian sigma (1, 2, 2) um;
@@ -81,14 +84,19 @@ def top_z(m):
     return np.where(m.any(0), np.where(m, zi, -1).max(0), np.nan).astype(np.float32)
 
 
-def keep_largest(m):
-    """Only the largest 26-connected component of m."""
+def keep_large_components(m, min_fraction):
+    """26-connected components of m with at least min_fraction x the voxels of the largest
+    (min_fraction 0 = all kept, 1 = only the largest)."""
+    if min_fraction <= 0:
+        return m
     lab, n = ndi.label(m, structure=S26)
     if n <= 1:
         return m
     cnt = np.bincount(lab.ravel())
     cnt[0] = 0
-    return lab == cnt.argmax()
+    keep = cnt >= min_fraction * cnt.max()
+    keep[0] = False
+    return keep[lab]
 
 
 def macrophage_columns(mac_s, muscle, h_top, valid, spd, p):
@@ -146,7 +154,7 @@ def compute_surface(src, ch, theta0, p, log=print, mac_ch=None):
     m = (tom_s > thr) & valid_ds
     muscle0 = remove_small(m, int(np.ceil(p["muscle_min_volume_um3"] / spd.prod())))
     muscle1 = fibre_filter(muscle0, valid_ds, p["fibre_line_um"] / spd[1], theta0)
-    muscle = keep_largest(muscle1) if p.get("muscle_largest_component", True) else muscle1
+    muscle = keep_large_components(muscle1, p["muscle_min_component_fraction"])
     h_raw = top_z(muscle)
     extra = {}
     h_use = h_raw
@@ -176,8 +184,9 @@ def compute_surface(src, ch, theta0, p, log=print, mac_ch=None):
         h_fill = np.zeros_like(h_raw)
     h = ndi.grey_closing(h_fill, footprint=disk(p["close_radius_um"] / spd[1]))
     log(f"muscle: threshold {thr:.2f}; muscle {muscle[valid_ds].mean():.1%} of valid voxels "
-        f"(fibre filter removed {1 - muscle1.sum() / max(muscle0.sum(), 1):.1%}, other "
-        f"components than the largest {1 - muscle.sum() / max(muscle1.sum(), 1):.2%}); columns "
+        f"(fibre filter removed {1 - muscle1.sum() / max(muscle0.sum(), 1):.1%}, removed "
+        f"components < {p['muscle_min_component_fraction']:g} x largest "
+        f"{1 - muscle.sum() / max(muscle1.sum(), 1):.2%}); columns "
         f"without muscle {1 - muscle.any(0).mean():.2%}; h (z slice) 1/50/99 % = "
         + ", ".join(f"{v:.0f}" for v in np.percentile(h, [1, 50, 99])))
     return dict(ds=ds, valid_ds=valid_ds, tom_ds=tom, tom_smoothed=tom_s, threshold=thr,

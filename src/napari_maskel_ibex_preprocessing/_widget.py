@@ -55,9 +55,11 @@ class PreprocessingWidget(QWidget):
         self.w_aauto = CheckBox(label="measure fibre direction automatically", value=True)
         self.w_angle = _fspin("fibre direction (°, x right, y down)", 0.0, -90, 90, 0.5)
         self.w_close = _fspin("surface closing radius (µm)", p["close_radius_um"], 0, 100, 0.1)
-        self.w_largest = CheckBox(label="keep only the largest muscle component",
-                                  value=p["muscle_largest_component"],
-                                  tooltip="removes objects lying on the tissue, e.g. a hair")
+        self.w_largest = _fspin("remove muscle components < fraction of largest",
+                                p["muscle_min_component_fraction"], 0, 1, 0.005,
+                                "e.g. 0.01: components smaller than 1 % of the largest muscle "
+                                "component are removed (objects on the tissue, e.g. a hair); "
+                                "0 = keep all, 1 = only the largest")
         self.w_mac = CheckBox(label="macrophage columns (CD11b): h from neighbours",
                               value=p["macrophage_exclusion"],
                               tooltip="columns whose top muscle voxels are CD11b+ take h from "
@@ -199,7 +201,7 @@ class PreprocessingWidget(QWidget):
                  muscle_min_volume_um3=self.w_mvol.value, fibre_line_um=self.w_line.value,
                  fibre_theta_deg=None if self.w_aauto.value else self.w_angle.value,
                  close_radius_um=self.w_close.value, tissue_smooth_um=self.w_tis.value,
-                 muscle_largest_component=self.w_largest.value,
+                 muscle_min_component_fraction=self.w_largest.value,
                  macrophage_exclusion=self.w_mac.value,
                  macrophage_threshold=None if self.w_macauto.value else self.w_macthr.value,
                  cd34_smooth_um=[self.w_cz.value, self.w_cy.value, self.w_cx.value],
